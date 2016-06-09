@@ -87,9 +87,9 @@ const image_t bootloaders [] PROGMEM =
     ATmegaBOOT_168_atmega328_pro_8MHz_hex,   // loader image
     sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,
     ATmegaBOOT_168_atmega328_pro_8MHz_hex, sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,         // calibration
-    0xA2, /* E2 without CKOUT */
-    0xD1, /* D9 without EESAVE */
-    0xFD, /* BOD at 2.7V */
+    0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
+    0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE (0xDE without EESAVE)
+    0x05,         // fuse extended byte: brown-out detection at 2.7V
     0x2F
   },       // lock bits: SPM is not allowed to write to the Boot Loader section.
 
