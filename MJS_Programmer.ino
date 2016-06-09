@@ -82,14 +82,14 @@ typedef struct {
 const image_t bootloaders [] PROGMEM =
 {
 
-  { { 0xA2 /* E2 without CKOUT */, 0xD1 /* D9 without EESAVE */, 0xFD /* BOD at 2.7V */ },
+  { { 0x1E, 0x95, 0x0F },
     0x7E00,               // start address
     ATmegaBOOT_168_atmega328_pro_8MHz_hex,   // loader image
     sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,
     ATmegaBOOT_168_atmega328_pro_8MHz_hex, sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,         // calibration
-    0xFF,         // fuse low byte: external clock, max start-up time
-    0xDE,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader
-    0x05,         // fuse extended byte: brown-out detection at 2.7V
+    0xA2, /* E2 without CKOUT */
+    0xD1, /* D9 without EESAVE */
+    0xFD, /* BOD at 2.7V */
     0x2F
   },       // lock bits: SPM is not allowed to write to the Boot Loader section.
 
@@ -164,7 +164,7 @@ void writeImage(const byte* data, unsigned int len) {
     // page changed? commit old one
     if (thisPage != oldPage)
     {
-      commitPage (oldPage, true);
+      commitPage (oldPage, false);
       oldPage = thisPage;
     }
     writeFlash (addr + i, pgm_read_byte(data + i));
@@ -172,7 +172,7 @@ void writeImage(const byte* data, unsigned int len) {
   }  // end while doing each word
 
   // commit final page
-  commitPage (oldPage, true);
+  commitPage (oldPage, false);
   Serial.println (F("Written."));
 
   Serial.println (F("Verifying ..."));
@@ -216,9 +216,6 @@ void writeImage(const byte* data, unsigned int len) {
   writeFuse (newhFuse, highFuse);
   writeFuse (newextFuse, extFuse);
   writeFuse (newlockByte, lockByte);
-
-  // confirm them
-  getFuseBytes ();
 
   Serial.println (F("Done."));
 
@@ -264,6 +261,24 @@ void program ()
 
   writeImage(currentImage.bootloader, currentImage.loaderLength);
 
+}
+
+void writeIDsAndKey(unsigned int id, unsigned long applicationId) {
+
+
+  String key = "";
+  for (int i=0; i< 32; i++)
+  {
+    key += String(random(16), HEX);
+  }
+
+  Serial.println ();
+  Serial.print (F("Now run: ttnctl devices register "));
+  Serial.print (id);
+  Serial.print (F(" "));
+  Serial.print (key);
+  Serial.print (F(" --app-eui "));
+  Serial.println (APPLICATION_ID);
 
 }
 
@@ -355,12 +370,6 @@ void loop ()
     Serial.println (currentId);
   }
 
-  String key = "";
-  for (int i=0; i< 32; i++)
-  {
-    key += String(random(16), HEX);
-  }
-
   if (startProgramming ())
   {
     getSignature ();
@@ -370,16 +379,10 @@ void loop ()
     if (foundSig != -1)
     {
       program ();
+      writeIDsAndKey(currentId, APPLICATION_ID);
     }
     stopProgramming ();
   }   // end of if entered programming mode OK
 
-  Serial.println ();
-  Serial.print (F("Now run: ttnctl devices register "));
-  Serial.print (currentId);
-  Serial.print (F(" "));
-  Serial.print (key);
-  Serial.print (F(" --app-eui "));
-  Serial.println (APPLICATION_ID);
 }  // end of loop
 
