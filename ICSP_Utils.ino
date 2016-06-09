@@ -5,48 +5,51 @@
 // Author: Nick Gammon
 
 /* ----------------------------------------------------------------------------
-NOTE: This file should only be modified in the Atmega_Hex_Uploader directory.
-Copies in other directories are hard-linked to this one.
-After modifying it run the shell script:
+  NOTE: This file should only be modified in the Atmega_Hex_Uploader directory.
+  Copies in other directories are hard-linked to this one.
+  After modifying it run the shell script:
   fixup_links.sh
-This script needs to be run in the directories:
+  This script needs to be run in the directories:
   Atmega_Board_Programmer and Atmega_Board_Detector
-That will ensure that those directories now are using the same file.
------------------------------------------------------------------------------- */
+  That will ensure that those directories now are using the same file.
+  ------------------------------------------------------------------------------ */
 
 
 
 #if !USE_BIT_BANGED_SPI
-  #include <SPI.h>
+#include <SPI.h>
 #endif // !USE_BIT_BANGED_SPI
 
 // programming commands to send via SPI to the chip
 enum {
-    progamEnable = 0xAC,
+  progamEnable = 0xAC,
 
-      // writes are preceded by progamEnable
-      chipErase = 0x80,
-      writeLockByte = 0xE0,
-      writeLowFuseByte = 0xA0,
-      writeHighFuseByte = 0xA8,
-      writeExtendedFuseByte = 0xA4,
+  // writes are preceded by progamEnable
+  chipErase = 0x80,
+  writeLockByte = 0xE0,
+  writeLowFuseByte = 0xA0, //  readEEPROM = 0xA0,
+  writeHighFuseByte = 0xA8,
+  writeExtendedFuseByte = 0xA4,
 
-    pollReady = 0xF0,
 
-    programAcknowledge = 0x53,
+  writeEEPROM = 0xC0,
 
-    readSignatureByte = 0x30,
-    readCalibrationByte = 0x38,
+  pollReady = 0xF0,
 
-    readLowFuseByte = 0x50,       readLowFuseByteArg2 = 0x00,
-    readExtendedFuseByte = 0x50,  readExtendedFuseByteArg2 = 0x08,
-    readHighFuseByte = 0x58,      readHighFuseByteArg2 = 0x08,
-    readLockByte = 0x58,          readLockByteArg2 = 0x00,
+  programAcknowledge = 0x53,
 
-    readProgramMemory = 0x20,
-    writeProgramMemory = 0x4C,
-    loadExtendedAddressByte = 0x4D,
-    loadProgramMemory = 0x40,
+  readSignatureByte = 0x30,
+  readCalibrationByte = 0x38,
+
+  readLowFuseByte = 0x50,       readLowFuseByteArg2 = 0x00,
+  readExtendedFuseByte = 0x50,  readExtendedFuseByteArg2 = 0x08,
+  readHighFuseByte = 0x58,      readHighFuseByteArg2 = 0x08,
+  readLockByte = 0x58,          readLockByteArg2 = 0x00,
+
+  readProgramMemory = 0x20,
+  writeProgramMemory = 0x4C,
+  loadExtendedAddressByte = 0x4D,
+  loadProgramMemory = 0x40,
 
 };  // end of enum
 
@@ -57,7 +60,7 @@ const byte fuseCommands [4] = { writeLowFuseByte, writeHighFuseByte, writeExtend
 //  processor may return a result on the 4th transfer, this is returned.
 byte program (const byte b1, const byte b2 = 0, const byte b3 = 0, const byte b4 = 0);
 byte program (const byte b1, const byte b2, const byte b3, const byte b4)
-  {
+{
   noInterrupts ();
 #if USE_BIT_BANGED_SPI
 
@@ -74,49 +77,59 @@ byte program (const byte b1, const byte b2, const byte b3, const byte b4)
 
   interrupts ();
   return b;
-  } // end of program
+} // end of program
+
+// read a byte from EEPROM
+byte readEEPROM(unsigned long addr) {
+  return program(writeLowFuseByte, highByte(addr), lowByte(addr));
+} // end of readEEPROM
+
+// write a byte to EEPROM
+void readEEPROM(unsigned long addr, const byte data) {
+  program(writeEEPROM, highByte(addr), lowByte(addr), data);
+} // end of writeEEPROM
 
 // read a byte from flash memory
 byte readFlash (unsigned long addr)
-  {
+{
   byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
   addr >>= 1;  // turn into word address
 
   // set the extended (most significant) address byte if necessary
   byte MSB = (addr >> 16) & 0xFF;
   if (MSB != lastAddressMSB)
-    {
+  {
     program (loadExtendedAddressByte, 0, MSB);
     lastAddressMSB = MSB;
-    }  // end if different MSB
+  }  // end if different MSB
 
   return program (readProgramMemory | high, highByte (addr), lowByte (addr));
-  } // end of readFlash
+} // end of readFlash
 
 // write a byte to the flash memory buffer (ready for committing)
 void writeFlash (unsigned long addr, const byte data)
-  {
+{
   byte high = (addr & 1) ? 0x08 : 0;  // set if high byte wanted
   addr >>= 1;  // turn into word address
   program (loadProgramMemory | high, 0, lowByte (addr), data);
-  } // end of writeFlash
+} // end of writeFlash
 
 byte readFuse (const byte which)
-  {
+{
   switch (which)
-    {
+  {
     case lowFuse:         return program (readLowFuseByte, readLowFuseByteArg2);
     case highFuse:        return program (readHighFuseByte, readHighFuseByteArg2);
     case extFuse:         return program (readExtendedFuseByte, readExtendedFuseByteArg2);
     case lockByte:        return program (readLockByte, readLockByteArg2);
     case calibrationByte: return program (readCalibrationByte);
-    }  // end of switch
+  }  // end of switch
 
-   return 0;
-  }  // end of readFuse
+  return 0;
+}  // end of readFuse
 
 void readSignature (byte sig [3])
-  {
+{
   for (byte i = 0; i < 3; i++)
     sig [i] = program (readSignatureByte, 0, i);
 
@@ -124,29 +137,29 @@ void readSignature (byte sig [3])
   program (loadExtendedAddressByte, 0, 0);
   lastAddressMSB = 0;
 
-  }  // end of readSignature
+}  // end of readSignature
 
 // poll the target device until it is ready to be programmed
 void pollUntilReady ()
-  {
+{
   if (currentSignature.timedWrites)
     delay (10);  // at least 2 x WD_FLASH which is 4.5 mS
   else
-    {
+  {
     while ((program (pollReady) & 1) == 1)
-      {}  // wait till ready
-    }  // end of if
-  }  // end of pollUntilReady
+    {}  // wait till ready
+  }  // end of if
+}  // end of pollUntilReady
 
 // commit page to flash memory
 void commitPage (unsigned long addr, bool showMessage)
-  {
+{
 
   if (showMessage)
-    {
+  {
     Serial.print (F("Committing page starting at 0x"));
     Serial.println (addr, HEX);
-    }
+  }
   else
     showProgress ();
 
@@ -155,38 +168,38 @@ void commitPage (unsigned long addr, bool showMessage)
   // set the extended (most significant) address byte if necessary
   byte MSB = (addr >> 16) & 0xFF;
   if (MSB != lastAddressMSB)
-    {
+  {
     program (loadExtendedAddressByte, 0, MSB);
     lastAddressMSB = MSB;
-    }  // end if different MSB
+  }  // end if different MSB
 
   program (writeProgramMemory, highByte (addr), lowByte (addr));
   pollUntilReady ();
 
   clearPage();  // clear ready for next page full
-  }  // end of commitPage
+}  // end of commitPage
 
 void eraseMemory ()
-  {
+{
   program (progamEnable, chipErase);   // erase it
   delay (20);  // for Atmega8
   pollUntilReady ();
   clearPage();  // clear temporary page
-  }  // end of eraseMemory
+}  // end of eraseMemory
 
 // write specified value to specified fuse/lock byte
 void writeFuse (const byte newValue, const byte whichFuse)
-  {
+{
   if (newValue == 0)
     return;  // ignore
 
   program (progamEnable, fuseCommands [whichFuse], 0, newValue);
   pollUntilReady ();
-  }  // end of writeFuse
+}  // end of writeFuse
 
 // put chip into programming mode
 bool startProgramming ()
-  {
+{
 
   Serial.print (F("Attempting to enter ICSP programming mode ..."));
 
@@ -208,7 +221,7 @@ bool startProgramming ()
 
   // we are in sync if we get back programAcknowledge on the third byte
   do
-    {
+  {
     // regrouping pause
     delay (100);
 
@@ -244,25 +257,25 @@ bool startProgramming ()
     interrupts ();
 
     if (confirm != programAcknowledge)
-      {
+    {
       Serial.print (".");
       if (timeout++ >= ENTER_PROGRAMMING_ATTEMPTS)
-        {
+      {
         Serial.println ();
         Serial.println (F("Failed to enter programming mode. Double-check wiring!"));
         return false;
-        }  // end of too many attempts
-      }  // end of not entered programming mode
+      }  // end of too many attempts
+    }  // end of not entered programming mode
 
-    } while (confirm != programAcknowledge);
+  } while (confirm != programAcknowledge);
 
   Serial.println ();
   Serial.println (F("Entered programming mode OK."));
   return true;
-  }  // end of startProgramming
+}  // end of startProgramming
 
 void stopProgramming ()
-  {
+{
   digitalWrite (RESET, LOW);
   pinMode (RESET, INPUT);
 
@@ -292,11 +305,11 @@ void stopProgramming ()
 
   Serial.println (F("Programming mode off."));
 
-  } // end of stopProgramming
+} // end of stopProgramming
 
 // called from setup()
 void initPins ()
-  {
+{
 
   // set up 8 MHz timer on pin 9
   pinMode (CLOCKOUT, OUTPUT);
@@ -307,5 +320,5 @@ void initPins ()
 
 
 
-  }  // end of initPins
+}  // end of initPins
 
