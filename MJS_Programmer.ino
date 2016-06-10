@@ -7,7 +7,16 @@
 // make some of these false to reduce compile size (the ones you don't want).
 // The Atmega328 is always included (Both Uno and Lilypad versions).
 
-#define APPLICATION_ID 1234567
+#define EEPROM_LAYOUT_HASH 0x8C
+#define EEPROM_OSCCAL_START 0x10
+#define EEPROM_APP_EUI_START 0x20
+#define EEPROM_DEV_EUI_START 0x30
+#define EEPROM_APP_KEY_START 0x40
+
+static uint8_t AppEui[] =
+{
+  0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x00, 0x03, 0x3A
+};
 
 const int ENTER_PROGRAMMING_ATTEMPTS = 50;
 
@@ -45,10 +54,7 @@ const int ENTER_PROGRAMMING_ATTEMPTS = 50;
 
 
 const unsigned long BAUD_RATE = 115200;
-
 const byte CLOCKOUT = 9;
-
-
 const byte RESET = 10;  // --> goes to reset on the target board
 
 #if ARDUINO < 100
@@ -59,44 +65,50 @@ const byte SCK = 13;    // SPI clock
 
 #include "Signatures.h"
 #include "General_Stuff.h"
+#include "bootloader_lilypad328.h"
 
+static uint8_t AppKey[] =
+{
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+static uint8_t DevEui[] =
+{
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
 
 // structure to hold signature and other relevant data about each bootloader
 typedef struct {
-  byte sig [3];                // chip signature
-  unsigned long loaderStart;   // start address of bootloader (bytes)
-  const byte * bootloader;     // address of bootloader hex data
-  unsigned int loaderLength;   // length of bootloader hex data (bytes)
-  const byte * calibration;     // address of calibration hex data
-  unsigned int calibrationLength;   // length of calibration hex data (bytes)
-  byte lowFuse, highFuse, extFuse, lockByte;  // what to set the fuses, lock bits to.
+  byte sig [3];
+  unsigned long start;
+  const byte * data;
+  unsigned int length;
+  byte lowFuse, highFuse, extFuse, lockByte;
 } image_t;
 
 
-// hex bootloader data
+const image_t bootloader = {
+  { 0x1E, 0x95, 0x0F },
+  0x7E00,               // start address
+  ATmegaBOOT_168_atmega328_pro_8MHz_hex,   // loader image
+  sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,
+  0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
+  0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE (0xDE without EESAVE)
+  0x05,         // fuse extended byte: brown-out detection at 2.7V
+  0x2F
+};
 
-// For simplicity later one, we always include these two
-#include "bootloader_lilypad328.h"
-
-// see Atmega328 datasheet page 298
-const image_t bootloaders [] PROGMEM =
-{
-
-  { { 0x1E, 0x95, 0x0F },
-    0x7E00,               // start address
-    ATmegaBOOT_168_atmega328_pro_8MHz_hex,   // loader image
-    sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,
-    ATmegaBOOT_168_atmega328_pro_8MHz_hex, sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,         // calibration
-    0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
-    0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE (0xDE without EESAVE)
-    0x05,         // fuse extended byte: brown-out detection at 2.7V
-    0x2F
-  },       // lock bits: SPM is not allowed to write to the Boot Loader section.
-
- 
-};  // end of bootloaders
-
-
+const image_t calibration = {
+  { 0x1E, 0x95, 0x0F },
+  0x7E00,               // start address
+  ATmegaBOOT_168_atmega328_pro_8MHz_hex,   // loader image
+  sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,
+  0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
+  0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE (0xDE without EESAVE)
+  0x05,         // fuse extended byte: brown-out detection at 2.7V
+  0x2F
+};
 
 void getFuseBytes ()
 {
@@ -115,20 +127,19 @@ void getFuseBytes ()
 image_t currentImage;
 unsigned int currentId = 0;
 
-
-
-void writeImage(const byte* data, unsigned int len) {
+void writeImage(const image_t* image) {
 
   int i;
 
   byte lFuse = readFuse (lowFuse);
 
-  byte newlFuse = currentImage.lowFuse;
-  byte newhFuse = currentImage.highFuse;
-  byte newextFuse = currentImage.extFuse;
-  byte newlockByte = currentImage.lockByte;
+  byte newlFuse = image->lowFuse;
+  byte newhFuse = image->highFuse;
+  byte newextFuse = image->extFuse;
+  byte newlockByte = image->lockByte;
 
-  unsigned long addr = currentImage.loaderStart;
+  unsigned long addr = image->start;
+  unsigned long len = image->length;
   unsigned long pagesize = currentSignature.pageSize;
   unsigned long pagemask = ~(pagesize - 1);
 
@@ -167,8 +178,8 @@ void writeImage(const byte* data, unsigned int len) {
       commitPage (oldPage, false);
       oldPage = thisPage;
     }
-    writeFlash (addr + i, pgm_read_byte(data + i));
-    writeFlash (addr + i + 1, pgm_read_byte(data + i + 1));
+    writeFlash (addr + i, pgm_read_byte(image->data + i));
+    writeFlash (addr + i + 1, pgm_read_byte(image->data + i + 1));
   }  // end while doing each word
 
   // commit final page
@@ -183,7 +194,7 @@ void writeImage(const byte* data, unsigned int len) {
   for (i = 0; i < len; i++)
   {
     byte found = readFlash (addr + i);
-    byte expected = pgm_read_byte(data + i);
+    byte expected = pgm_read_byte(image->data + i);
     if (found != expected)
     {
       if (errors <= 100)
@@ -221,64 +232,63 @@ void writeImage(const byte* data, unsigned int len) {
 
 } // end of writeImage
 
+void writeIDsAndKey(unsigned int id) {
 
-// burn the bootloader to the target device
-void program ()
-{
-  bool foundImage = false;
+  DevEui[0] = 0x40;
+  DevEui[1] = 0x00;
+  DevEui[2] = 0x00;
+  DevEui[3] = 0x00;
+  DevEui[4] = id >> 24 & 0xFF;
+  DevEui[5] = id >> 16 & 0xFF;
+  DevEui[6] = id >> 8 & 0xFF;
+  DevEui[7] = id & 0xFF;
 
-  for (int j = 0; j < NUMITEMS (bootloaders); j++)
+  // Write layout dword hash
+  writeEEPROM(0, EEPROM_LAYOUT_HASH >> 24 & 0xFF);
+  writeEEPROM(1, EEPROM_LAYOUT_HASH >> 16 & 0xFF);
+  writeEEPROM(2, EEPROM_LAYOUT_HASH >> 8 & 0xFF);
+  writeEEPROM(3, EEPROM_LAYOUT_HASH & 0xFF);
+
+  // Write Device EUI and App EUI
+  for (byte i = 0; i < 8; i++)
   {
-
-    memcpy_P (&currentImage, &bootloaders [j], sizeof currentImage);
-
-    if (memcmp (currentSignature.sig, currentImage.sig, sizeof currentSignature.sig) == 0)
-    {
-      foundImage = true;
-      break;
-    }  // end of signature found
-  }  // end of for each signature
-
-  if (!foundImage)
-  {
-    Serial.println (F("No bootloader support for this device."));
-    return;
+    writeEEPROM(EEPROM_DEV_EUI_START + i, DevEui[i]);
+    writeEEPROM(EEPROM_APP_EUI_START + i, AppEui[i]);
   }
 
-  // if in the table, but with zero length, we need to enable a #define to use it.
-  if (currentImage.loaderLength == 0)
+  // Generate and write App Key
+  for (byte i = 0; i < 16; i++)
   {
-    Serial.println (F("Image for this device is disabled, edit " __FILE__ " to enable it."));
-    return;
+    AppKey[i] = random(256);
+    writeEEPROM(EEPROM_APP_KEY_START + i, AppKey[i]);
   }
 
-  if (currentImage.calibration != NULL) {
-    writeImage(currentImage.calibration, currentImage.calibrationLength);
-    delay(1000); // XXX
-  } else {
-    Serial.println (F("No calibration set for image, skipping."));
-  }
-
-  writeImage(currentImage.bootloader, currentImage.loaderLength);
-
-}
-
-void writeIDsAndKey(unsigned int id, unsigned long applicationId) {
-
-
-  String key = "";
-  for (int i=0; i< 32; i++)
-  {
-    key += String(random(16), HEX);
-  }
+  // Write layout dword
+  
 
   Serial.println ();
   Serial.print (F("Now run: ttnctl devices register "));
-  Serial.print (id);
+  for (byte i = 0; i < 8; i++) {
+    if (DevEui[i] < 0x10) {
+      Serial.print (0);
+    }
+    Serial.print (DevEui[i], HEX);
+  }
   Serial.print (F(" "));
-  Serial.print (key);
+  for (byte i = 0; i < 16; i++) {
+    if (AppKey[i] < 0x10) {
+      Serial.print (0);
+    }
+    Serial.print (AppKey[i], HEX);
+  }
   Serial.print (F(" --app-eui "));
-  Serial.println (APPLICATION_ID);
+  for (byte i = 0; i < 8; i++) {
+    if (AppEui[i] < 0x10) {
+      Serial.print (0);
+    }
+    Serial.print (AppEui[i], HEX);
+  }
+  Serial.println ();
 
 }
 
@@ -334,19 +344,13 @@ void setup ()
 
 }  // end of setup
 
-void loop ()
-{
-  currentId += 1;
-  Serial.println ();
-  Serial.print (F("Current device ID is: "));
-  Serial.println (currentId);
-  Serial.println (F("Enter device ID and end with # or just # to use suggested ID"));
 
+int readInt() {
   char intBuffer[12];
   String intData = "";
   while (true) {
     int ch = Serial.read ();
-    if (ch == -1) 
+    if (ch == -1)
     {
       // Skip
     }
@@ -361,8 +365,20 @@ void loop ()
   }
   int intLength = intData.length () + 1;
   intData.toCharArray (intBuffer, intLength);
-  int id = atoi (intBuffer);
-  
+
+  return atoi(intBuffer);
+}
+
+void loop ()
+{
+  currentId += 1;
+  Serial.println ();
+  Serial.print (F("Current device ID is: "));
+  Serial.println (currentId);
+  Serial.println (F("Enter device ID and end with # or just # to use suggested ID"));
+
+  int id = readInt();
+
   if (id != 0)
   {
     currentId = id;
@@ -378,8 +394,14 @@ void loop ()
     // if we found a signature try to write a bootloader
     if (foundSig != -1)
     {
-      program ();
-      writeIDsAndKey(currentId, APPLICATION_ID);
+
+      writeImage(&calibration);
+
+      delay(1000); // XXX wait for calibration
+
+      writeImage(&bootloader);
+
+      writeIDsAndKey(currentId);
     }
     stopProgramming ();
   }   // end of if entered programming mode OK

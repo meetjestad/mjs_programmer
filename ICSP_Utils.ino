@@ -27,12 +27,13 @@ enum {
   // writes are preceded by progamEnable
   chipErase = 0x80,
   writeLockByte = 0xE0,
-  writeLowFuseByte = 0xA0, //  readEEPROM = 0xA0,
+  writeLowFuseByte = 0xA0,
+  readEEPROMByte = 0xA0,
   writeHighFuseByte = 0xA8,
   writeExtendedFuseByte = 0xA4,
 
 
-  writeEEPROM = 0xC0,
+  writeEEPROMByte = 0xC0,
 
   pollReady = 0xF0,
 
@@ -81,12 +82,12 @@ byte program (const byte b1, const byte b2, const byte b3, const byte b4)
 
 // read a byte from EEPROM
 byte readEEPROM(unsigned long addr) {
-  return program(writeLowFuseByte, highByte(addr), lowByte(addr));
+  return program(readEEPROMByte, highByte(addr), lowByte(addr));
 } // end of readEEPROM
 
 // write a byte to EEPROM
-void readEEPROM(unsigned long addr, const byte data) {
-  program(writeEEPROM, highByte(addr), lowByte(addr), data);
+void writeEEPROM(unsigned long addr, const byte data) {
+  program(writeEEPROMByte, highByte(addr), lowByte(addr), data);
 } // end of writeEEPROM
 
 // read a byte from flash memory
