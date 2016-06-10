@@ -28,12 +28,8 @@ enum {
   chipErase = 0x80,
   writeLockByte = 0xE0,
   writeLowFuseByte = 0xA0,
-  readEEPROMByte = 0xA0,
   writeHighFuseByte = 0xA8,
   writeExtendedFuseByte = 0xA4,
-
-
-  writeEEPROMByte = 0xC0,
 
   pollReady = 0xF0,
 
@@ -51,6 +47,8 @@ enum {
   writeProgramMemory = 0x4C,
   loadExtendedAddressByte = 0x4D,
   loadProgramMemory = 0x40,
+  readEEPROMByte = 0xA0,
+  writeEEPROMByte = 0xC0,
 
 };  // end of enum
 
@@ -88,6 +86,7 @@ byte readEEPROM(unsigned long addr) {
 // write a byte to EEPROM
 void writeEEPROM(unsigned long addr, const byte data) {
   program(writeEEPROMByte, highByte(addr), lowByte(addr), data);
+  delay(4); // At least 3.6ms according to 328P datasheet
 } // end of writeEEPROM
 
 // read a byte from flash memory
