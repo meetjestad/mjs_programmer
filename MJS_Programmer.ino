@@ -259,7 +259,8 @@ void writeIDsAndKey(unsigned int id) {
   // Generate and write App Key
   for (byte i = 0; i < 16; i++)
   {
-    AppKey[i] = random(256);
+    while (!Entropy.available()) /* wait */;
+    AppKey[i] = Entropy.randomByte();
     writeEEPROM(EEPROM_APP_KEY_START + i, AppKey[i]);
   }
 
@@ -340,8 +341,6 @@ void setup ()
 
   // Get a random seed
   Entropy.initialize();
-  randomSeed(Entropy.random());
-
 }  // end of setup
 
 

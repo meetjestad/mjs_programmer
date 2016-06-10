@@ -310,15 +310,14 @@ void stopProgramming ()
 // called from setup()
 void initPins ()
 {
-
+/* Disabled, since this makes the Entropy library fail to generate
+ * entropy...
   // set up 8 MHz timer on pin 9
   pinMode (CLOCKOUT, OUTPUT);
   // set up Timer 1
   TCCR1A = bit (COM1A0);  // toggle OC1A on Compare Match
   TCCR1B = bit (WGM12) | bit (CS10);   // CTC, no prescaling
   OCR1A =  0;       // output every cycle
-
-
-
+*/
 }  // end of initPins
 
