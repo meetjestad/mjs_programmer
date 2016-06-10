@@ -64,7 +64,8 @@ const byte SCK = 13;    // SPI clock
 
 #include "Signatures.h"
 #include "General_Stuff.h"
-#include "bootloader_lilypad328.h"
+#include "bootloader_mjs.h"
+#include "calibrator_atmega328p_8mhz.h"
 
 static uint8_t AppKey[] =
 {
@@ -90,21 +91,21 @@ typedef struct {
 const image_t bootloader = {
   { 0x1E, 0x95, 0x0F },
   0x7E00,               // start address
-  ATmegaBOOT_168_atmega328_pro_8MHz_hex,   // loader image
-  sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,
+  optiboot_atmega328p_8Mhz_57600_bin,   // loader image
+  sizeof optiboot_atmega328p_8Mhz_57600_bin,
   0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
-  0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE (0xDE without EESAVE)
+  0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE
   0x05,         // fuse extended byte: brown-out detection at 2.7V
   0x2F
 };
 
 const image_t calibration = {
   { 0x1E, 0x95, 0x0F },
-  0x7E00,               // start address
-  ATmegaBOOT_168_atmega328_pro_8MHz_hex,   // loader image
-  sizeof ATmegaBOOT_168_atmega328_pro_8MHz_hex,
+  0x0,               // start address
+  calibrator_atmega328p_8mhz,   // image
+  sizeof calibrator_atmega328p_8mhz,
   0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
-  0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE (0xDE without EESAVE)
+  0xD7,         // fuse high byte: SPI enable, boot into main code, EESAVE
   0x05,         // fuse extended byte: brown-out detection at 2.7V
   0x2F
 };
@@ -395,7 +396,26 @@ void loop ()
 
       writeImage(&calibration);
 
-      delay(1000); // XXX wait for calibration
+      // Clear any previous calibration value, so we can be really sure
+      // that a new one was succesfully written.
+      writeEEPROM(EEPROM_OSCCAL_START, 0xff);
+      stopProgramming();
+
+      Serial.println(F("Waiting for calibration to complete...."));
+
+      delay(6000); // Wait for calibration
+
+      startProgramming();
+
+      uint8_t osccal = readEEPROM(EEPROM_OSCCAL_START);
+      if (osccal == 0xff) {
+        Serial.println(F("!!! Calibration failed !!!"));
+      }
+
+      Serial.print(F("Calibration complete, OSCCAL value: 0x"));
+      Serial.println(osccal, HEX);
+      Serial.print(F("Factory calibration was: 0x"));
+      Serial.println(readFuse(calibrationByte), HEX);
 
       writeImage(&bootloader);
 
