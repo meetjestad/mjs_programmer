@@ -3,10 +3,7 @@
 // Heavily modified by Matthijs Kooijman & Bas Peschier for the
 // Meet-je-stad project.
 
-static uint8_t AppEui[] =
-{
-  0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x00, 0x03, 0x3A
-};
+static uint8_t AppEui[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x00, 0x03, 0xBA };
 
 const int ENTER_PROGRAMMING_ATTEMPTS = 50;
 
