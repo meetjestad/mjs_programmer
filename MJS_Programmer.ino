@@ -1,17 +1,7 @@
 // Atmega chip programmer
 // Author: Nick Gammon
-// Date: 22nd May 2012
-// Version: 1.36
-
-// IMPORTANT: If you get a compile or verification error, due to the sketch size,
-// make some of these false to reduce compile size (the ones you don't want).
-// The Atmega328 is always included (Both Uno and Lilypad versions).
-
-#define EEPROM_LAYOUT_HASH 0x8C
-#define EEPROM_OSCCAL_START 0x10
-#define EEPROM_APP_EUI_START 0x20
-#define EEPROM_DEV_EUI_START 0x30
-#define EEPROM_APP_KEY_START 0x40
+// Heavily modified by Matthijs Kooijman & Bas Peschier for the
+// Meet-je-stad project.
 
 static uint8_t AppEui[] =
 {
@@ -23,6 +13,8 @@ const int ENTER_PROGRAMMING_ATTEMPTS = 50;
 /*
 
   Copyright 2012 Nick Gammon.
+  Copyright 2016 Matthijs Kooijman
+  Copyright 2016 Bas Peschier
 
 
   PERMISSION TO DISTRIBUTE
@@ -60,23 +52,21 @@ const byte RESET = 10;  // --> goes to reset on the target board
 const byte SCK = 13;    // SPI clock
 #endif
 
-
+#define EEPROM_LAYOUT_MAGIC 0x2a60af86 // Just a random number, stored little-endian
+#define EEPROM_LAYOUT_MAGIC_START 0x00 // 4 bytes
+#define EEPROM_OSCCAL_START (EEPROM_LAYOUT_MAGIC_START + 4) // 1 byte
+#define EEPROM_APP_EUI_START (EEPROM_OSCCAL_START + 1)
+#define EEPROM_APP_EUI_LEN 8
+#define EEPROM_DEV_EUI_START (EEPROM_APP_EUI_START + EEPROM_APP_EUI_LEN)
+#define EEPROM_DEV_EUI_LEN 8
+#define EEPROM_APP_KEY_START (EEPROM_DEV_EUI_START + EEPROM_DEV_EUI_LEN)
+#define EEPROM_APP_KEY_LEN 16
 
 #include "Signatures.h"
 #include "General_Stuff.h"
+
 #include "bootloader_mjs.h"
 #include "calibrator_atmega328p_8mhz.h"
-
-static uint8_t AppKey[] =
-{
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
-
-static uint8_t DevEui[] =
-{
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
 
 // structure to hold signature and other relevant data about each bootloader
 typedef struct {
@@ -125,9 +115,9 @@ void getFuseBytes ()
 }  // end of getFuseBytes
 
 image_t currentImage;
-unsigned int currentId = 0;
+unsigned int currentId = 1;
 
-void writeImage(const image_t* image) {
+bool writeImage(const image_t* image) {
 
   int i;
 
@@ -162,7 +152,7 @@ void writeImage(const image_t* image) {
     delay (1000);
     stopProgramming ();  // latch fuse
     if (!startProgramming ())
-      return;
+      return false;
     delay (1000);
   }
 
@@ -184,6 +174,7 @@ void writeImage(const image_t* image) {
 
   // commit final page
   commitPage (oldPage, false);
+  Serial.println ();
   Serial.println (F("Written."));
 
   Serial.println (F("Verifying ..."));
@@ -218,7 +209,7 @@ void writeImage(const image_t* image) {
     Serial.println (F(" verification error(s)."));
     if (errors > 100)
       Serial.println (F("First 100 shown."));
-    return;  // don't change fuses if errors
+    return false;  // don't change fuses if errors
   }  // end if
 
   Serial.println (F("Writing fuses ..."));
@@ -229,12 +220,13 @@ void writeImage(const image_t* image) {
   writeFuse (newlockByte, lockByte);
 
   Serial.println (F("Done."));
-
+  return true;
 } // end of writeImage
 
 void writeIDsAndKey(unsigned int id) {
+  uint8_t DevEui[EEPROM_DEV_EUI_LEN], AppKey[EEPROM_APP_KEY_LEN];
 
-  DevEui[0] = 0x40;
+  DevEui[0] = 0x00;
   DevEui[1] = 0x00;
   DevEui[2] = 0x00;
   DevEui[3] = 0x00;
@@ -243,54 +235,60 @@ void writeIDsAndKey(unsigned int id) {
   DevEui[6] = id >> 8 & 0xFF;
   DevEui[7] = id & 0xFF;
 
-  // Write layout dword hash
-  writeEEPROM(0, EEPROM_LAYOUT_HASH >> 24 & 0xFF);
-  writeEEPROM(1, EEPROM_LAYOUT_HASH >> 16 & 0xFF);
-  writeEEPROM(2, EEPROM_LAYOUT_HASH >> 8 & 0xFF);
-  writeEEPROM(3, EEPROM_LAYOUT_HASH & 0xFF);
+  // Write layout dword hash (little endian)
+  writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 3, EEPROM_LAYOUT_MAGIC >> 24 & 0xFF);
+  writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 2, EEPROM_LAYOUT_MAGIC >> 16 & 0xFF);
+  writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 1, EEPROM_LAYOUT_MAGIC >> 8 & 0xFF);
+  writeEEPROM(EEPROM_LAYOUT_MAGIC_START, EEPROM_LAYOUT_MAGIC & 0xFF);
 
   // Write Device EUI and App EUI
-  for (byte i = 0; i < 8; i++)
-  {
+  for (byte i = 0; i < EEPROM_DEV_EUI_LEN; i++)
     writeEEPROM(EEPROM_DEV_EUI_START + i, DevEui[i]);
+
+  for (byte i = 0; i < EEPROM_APP_EUI_LEN; i++)
     writeEEPROM(EEPROM_APP_EUI_START + i, AppEui[i]);
-  }
 
   // Generate and write App Key
-  for (byte i = 0; i < 16; i++)
+  for (byte i = 0; i < EEPROM_APP_KEY_LEN; i++)
   {
     while (!Entropy.available()) /* wait */;
     AppKey[i] = Entropy.randomByte();
     writeEEPROM(EEPROM_APP_KEY_START + i, AppKey[i]);
   }
 
-  // Write layout dword
-  
+  // Dump EEPROM written
+  Serial.println("Values written to EEPROM:");
+  for (byte i = 0; i < EEPROM_APP_KEY_START + EEPROM_APP_KEY_LEN; i++) {
+    printHexByte(readEEPROM(i));
+    if (i % 16 < 15)
+      Serial.write(' ');
+    else
+      Serial.println();
+  }
+  Serial.println();
+  Serial.println();
 
-  Serial.println ();
-  Serial.print (F("Now run: ttnctl devices register "));
-  for (byte i = 0; i < 8; i++) {
-    if (DevEui[i] < 0x10) {
-      Serial.print (0);
-    }
-    Serial.print (DevEui[i], HEX);
-  }
-  Serial.print (F(" "));
-  for (byte i = 0; i < 16; i++) {
-    if (AppKey[i] < 0x10) {
-      Serial.print (0);
-    }
-    Serial.print (AppKey[i], HEX);
-  }
-  Serial.print (F(" --app-eui "));
-  for (byte i = 0; i < 8; i++) {
-    if (AppEui[i] < 0x10) {
-      Serial.print (0);
-    }
-    Serial.print (AppEui[i], HEX);
-  }
-  Serial.println ();
+  Serial.println(F("Now run:"));
+  Serial.print(F("ttnctl devices register "));
+  printHexBytes(DevEui, EEPROM_DEV_EUI_LEN);
+  Serial.print(F(" "));
+  printHexBytes(AppKey, EEPROM_APP_KEY_LEN);
+  Serial.print(F(" --app-eui "));
+  printHexBytes(AppEui, EEPROM_APP_EUI_LEN);
+  Serial.println();
+}
 
+void printHexBytes(const uint8_t *buf, uint8_t len)
+{
+  while (len--)
+    printHexByte(*buf++);
+}
+
+void printHexByte(uint8_t b)
+{
+  if (b < 0x10)
+    Serial.write('0');
+  Serial.print(b, HEX);
 }
 
 void getSignature ()
@@ -345,44 +343,49 @@ void setup ()
 
 
 int readInt() {
-  char intBuffer[12];
-  String intData = "";
+  while (Serial.read() >= 0) /* flush */;
+
+  int res = 0;
   while (true) {
-    int ch = Serial.read ();
-    if (ch == -1)
+    int ch = Serial.read();
+    if (ch < 0)
+      continue;
+
+    Serial.write(ch);
+
+    if (ch == '\r' || ch == '\n')
     {
-      // Skip
+      if (res < 0) {
+        Serial.println(F("Invalid number"));
+        res = 0;
+        continue;
+      } else {
+        return res;
+      }
     }
-    else if (ch == (int)'#')
+    else if (ch >= '0' && ch <= '9')
     {
-      break;
-    }
-    else
-    {
-      intData += (char) ch;
+      res *= 10;
+      res += (ch - '0');
+    } else {
+      res = -1;
     }
   }
-  int intLength = intData.length () + 1;
-  intData.toCharArray (intBuffer, intLength);
-
-  return atoi(intBuffer);
 }
 
 void loop ()
 {
-  currentId += 1;
   Serial.println ();
-  Serial.print (F("Current device ID is: "));
+  Serial.print (F("Next device ID is: "));
   Serial.println (currentId);
-  Serial.println (F("Enter device ID and end with # or just # to use suggested ID"));
+  Serial.println (F("Enter a number to change it, or just press enter to use this one."));
 
   int id = readInt();
 
   if (id != 0)
   {
     currentId = id;
-    Serial.print (F("Current device ID is now: "));
-    Serial.println (currentId);
+    return;
   }
 
   if (startProgramming ())
@@ -394,7 +397,8 @@ void loop ()
     if (foundSig != -1)
     {
 
-      writeImage(&calibration);
+      if (!writeImage(&calibration))
+        return;
 
       // Clear any previous calibration value, so we can be really sure
       // that a new one was succesfully written.
@@ -405,11 +409,13 @@ void loop ()
 
       delay(6000); // Wait for calibration
 
-      startProgramming();
+      if (!startProgramming())
+        return;
 
       uint8_t osccal = readEEPROM(EEPROM_OSCCAL_START);
       if (osccal == 0xff) {
         Serial.println(F("!!! Calibration failed !!!"));
+        return;
       }
 
       Serial.print(F("Calibration complete, OSCCAL value: 0x"));
@@ -417,12 +423,14 @@ void loop ()
       Serial.print(F("Factory calibration was: 0x"));
       Serial.println(readFuse(calibrationByte), HEX);
 
-      writeImage(&bootloader);
+      if (!writeImage(&bootloader))
+        return;
 
       writeIDsAndKey(currentId);
     }
     stopProgramming ();
-  }   // end of if entered programming mode OK
 
+    currentId += 1;
+  }   // end of if entered programming mode OK
 }  // end of loop
 
