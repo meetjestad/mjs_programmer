@@ -52,8 +52,7 @@ const int ENTER_PROGRAMMING_ATTEMPTS = 50;
 #include <avr/pgmspace.h>
 #include <Entropy.h>
 
-
-const unsigned long BAUD_RATE = 115200;
+const unsigned long BAUD_RATE = 9600;
 const byte CLOCKOUT = 9;
 const byte RESET = 10;  // --> goes to reset on the target board
 
