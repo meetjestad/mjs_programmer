@@ -71,6 +71,7 @@ typedef struct {
   unsigned long start;
   const byte * data;
   unsigned int length;
+  unsigned long osccal_offset;
   byte lowFuse, highFuse, extFuse, lockByte;
 } image_t;
 
@@ -80,6 +81,7 @@ const image_t bootloader = {
   0x7E00,               // start address
   optiboot_atmega328p_8Mhz_57600_bin,   // loader image
   sizeof optiboot_atmega328p_8Mhz_57600_bin,
+  0x7ffd,
   0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
   0xD6,         // fuse high byte: SPI enable, boot into bootloader, 512 byte bootloader, EESAVE
   0x05,         // fuse extended byte: brown-out detection at 2.7V
@@ -91,6 +93,7 @@ const image_t calibration = {
   0x0,               // start address
   calibrator_atmega328p_8mhz,   // image
   sizeof calibrator_atmega328p_8mhz,
+  -1,
   0xE2,         // fuse low byte: RC oscillator 8Mhz, max start-up time (0xA2 with CKOUT)
   0xD7,         // fuse high byte: SPI enable, boot into main code, EESAVE
   0x05,         // fuse extended byte: brown-out detection at 2.7V
@@ -114,7 +117,7 @@ void getFuseBytes ()
 image_t currentImage;
 unsigned int currentId = 1;
 
-bool writeImage(const image_t* image) {
+bool writeImage(const image_t* image, uint8_t osccal_value = 0xff) {
 
   int i;
 
@@ -165,8 +168,15 @@ bool writeImage(const image_t* image) {
       commitPage (oldPage, false);
       oldPage = thisPage;
     }
-    writeFlash (addr + i, pgm_read_byte(image->data + i));
-    writeFlash (addr + i + 1, pgm_read_byte(image->data + i + 1));
+    if (addr + i == image->osccal_offset)
+      writeFlash (addr + i, osccal_value);
+    else
+      writeFlash (addr + i, pgm_read_byte(image->data + i));
+
+    if (addr + i + 1== image->osccal_offset)
+      writeFlash (addr + i + 1, osccal_value);
+    else
+      writeFlash (addr + i + 1, pgm_read_byte(image->data + i + 1));
   }  // end while doing each word
 
   // commit final page
@@ -183,6 +193,8 @@ bool writeImage(const image_t* image) {
   {
     byte found = readFlash (addr + i);
     byte expected = pgm_read_byte(image->data + i);
+    if (addr + i == image->osccal_offset)
+      expected = osccal_value;
     if (found != expected)
     {
       if (errors <= 100)
@@ -420,7 +432,7 @@ void loop ()
       Serial.print(F("Factory calibration was: 0x"));
       Serial.println(readFuse(calibrationByte), HEX);
 
-      if (!writeImage(&bootloader))
+      if (!writeImage(&bootloader, osccal))
         return;
 
       writeIDsAndKey(currentId);
