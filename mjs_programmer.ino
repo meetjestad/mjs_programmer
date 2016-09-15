@@ -406,6 +406,11 @@ void loop ()
     // if we found a signature try to write a bootloader
     if (foundSig != -1)
     {
+      uint32_t magic = (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 3) << 24
+                     | (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 2) << 16
+                     | (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 1) << 8
+                     | (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 0);
+
 
       if (!writeImage(&calibration))
         return;
@@ -436,7 +441,16 @@ void loop ()
       if (!writeImage(&bootloader, osccal))
         return;
 
-      writeIDsAndKey(currentId);
+      if (magic == EEPROM_LAYOUT_MAGIC_OLD) {
+        // Only update the signature so the sketch knows OSCCAL does not
+        // need to be loaded.
+        writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 3, EEPROM_LAYOUT_MAGIC >> 24 & 0xFF);
+        writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 2, EEPROM_LAYOUT_MAGIC >> 16 & 0xFF);
+        writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 1, EEPROM_LAYOUT_MAGIC >> 8 & 0xFF);
+        writeEEPROM(EEPROM_LAYOUT_MAGIC_START, EEPROM_LAYOUT_MAGIC & 0xFF);
+      } else {
+        writeIDsAndKey(currentId);
+      }
     }
     stopProgramming ();
 
