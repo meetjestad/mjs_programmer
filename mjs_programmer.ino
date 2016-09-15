@@ -49,7 +49,8 @@ const byte RESET = 10;  // --> goes to reset on the target board
 const byte SCK = 13;    // SPI clock
 #endif
 
-#define EEPROM_LAYOUT_MAGIC 0x2a60af86 // Just a random number, stored little-endian
+#define EEPROM_LAYOUT_MAGIC_OLD 0x2a60af86 // Just a random number, stored little-endian
+#define EEPROM_LAYOUT_MAGIC 0x2a60af87 // Just a random number, stored little-endian
 #define EEPROM_LAYOUT_MAGIC_START 0x00 // 4 bytes
 #define EEPROM_OSCCAL_START (EEPROM_LAYOUT_MAGIC_START + 4) // 1 byte
 #define EEPROM_APP_EUI_START (EEPROM_OSCCAL_START + 1)
