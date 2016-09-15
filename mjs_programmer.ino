@@ -411,6 +411,19 @@ void loop ()
                      | (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 1) << 8
                      | (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 0);
 
+      if (magic == EEPROM_LAYOUT_MAGIC_OLD) {
+        Serial.println("Detected older EEPROM content, press enter to replace bootloader, but not the id and keys.");
+      } else if (magic == EEPROM_LAYOUT_MAGIC) {
+        Serial.println("Detected up-to-date EEPROM content, press enter to replace everything (include the id and keys).");
+      } else {
+        Serial.println("No EEPROM content found, press enter to write bootloader and EEPROM.");
+      }
+
+      Serial.println("Enter any non-zero number to abort.");
+      if (readInt()) {
+        stopProgramming();
+        return;
+      }
 
       if (!writeImage(&calibration))
         return;
