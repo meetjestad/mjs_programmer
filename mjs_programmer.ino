@@ -413,6 +413,13 @@ void loop ()
                      | (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 1) << 8
                      | (uint32_t)readEEPROM(EEPROM_LAYOUT_MAGIC_START + 0);
 
+      if (magic == EEPROM_LAYOUT_MAGIC_OLD || magic == EEPROM_LAYOUT_MAGIC) {
+        uint16_t currentId = (uint16_t)readEEPROM(EEPROM_DEV_EUI_START + EEPROM_DEV_EUI_LEN - 2) << 8
+                        | (uint16_t)readEEPROM(EEPROM_DEV_EUI_START + EEPROM_DEV_EUI_LEN - 1);
+        Serial.print("Current device id: ");
+        Serial.println(currentId);
+      }
+
       if (magic == EEPROM_LAYOUT_MAGIC_OLD) {
         Serial.println("Detected older EEPROM content, press enter to replace bootloader, but not the id and keys.");
       } else if (magic == EEPROM_LAYOUT_MAGIC) {
