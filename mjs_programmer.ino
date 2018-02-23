@@ -419,6 +419,10 @@ void loop ()
         Serial.print("Current device id: ");
         Serial.println(currentId);
       }
+      if (magic != EEPROM_LAYOUT_MAGIC_OLD) {
+        Serial.print("Device id will be set to: ");
+        Serial.println(idToWrite);
+      }
 
       if (magic == EEPROM_LAYOUT_MAGIC_OLD) {
         Serial.println("Detected older EEPROM content, press enter to replace bootloader, but not the id and keys.");
