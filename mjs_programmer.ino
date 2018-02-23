@@ -116,11 +116,11 @@ void getFuseBytes ()
 }  // end of getFuseBytes
 
 image_t currentImage;
-unsigned int idToWrite = 1;
+uint16_t idToWrite = 1;
 
 bool writeImage(const image_t* image, uint8_t osccal_value = 0xff) {
 
-  int i;
+  unsigned long i;
 
   byte lFuse = readFuse (lowFuse);
 
@@ -233,15 +233,15 @@ bool writeImage(const image_t* image, uint8_t osccal_value = 0xff) {
   return true;
 } // end of writeImage
 
-void writeIDsAndKey(unsigned int id) {
+void writeIDsAndKey(uint32_t id) {
   uint8_t DevEui[EEPROM_DEV_EUI_LEN], AppKey[EEPROM_APP_KEY_LEN];
 
   DevEui[0] = 0x00;
   DevEui[1] = 0x00;
   DevEui[2] = 0x00;
   DevEui[3] = 0x00;
-  DevEui[4] = id >> 24 & 0xFF;
-  DevEui[5] = id >> 16 & 0xFF;
+  DevEui[4] = 0x00;
+  DevEui[5] = 0x00;
   DevEui[6] = id >> 8 & 0xFF;
   DevEui[7] = id & 0xFF;
 
@@ -315,7 +315,7 @@ void getSignature ()
 
   Serial.println ();
 
-  for (int j = 0; j < NUMITEMS (signatures); j++)
+  for (uint16_t j = 0; j < NUMITEMS (signatures); j++)
   {
 
     memcpy_P (&currentSignature, &signatures [j], sizeof currentSignature);
@@ -354,10 +354,11 @@ void setup ()
 }  // end of setup
 
 
-int readInt() {
+uint16_t readInt() {
   while (Serial.read() >= 0) /* flush */;
 
-  int res = 0;
+  uint16_t res = 0;
+  bool valid = true;
   while (true) {
     int ch = Serial.read();
     if (ch < 0)
@@ -367,9 +368,10 @@ int readInt() {
 
     if (ch == '\r' || ch == '\n')
     {
-      if (res < 0) {
+      if (!valid) {
         Serial.println(F("Invalid number"));
         res = 0;
+        valid = true;
         continue;
       } else {
         return res;
@@ -380,7 +382,7 @@ int readInt() {
       res *= 10;
       res += (ch - '0');
     } else {
-      res = -1;
+      valid = false;
     }
   }
 }
@@ -392,7 +394,7 @@ void loop ()
   Serial.println (idToWrite);
   Serial.println (F("Enter a number to change it, or just press enter to use this one."));
 
-  int id = readInt();
+  uint16_t id = readInt();
 
   if (id != 0)
   {
