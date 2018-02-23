@@ -116,7 +116,7 @@ void getFuseBytes ()
 }  // end of getFuseBytes
 
 image_t currentImage;
-unsigned int currentId = 1;
+unsigned int idToWrite = 1;
 
 bool writeImage(const image_t* image, uint8_t osccal_value = 0xff) {
 
@@ -389,14 +389,14 @@ void loop ()
 {
   Serial.println ();
   Serial.print (F("Next device ID is: "));
-  Serial.println (currentId);
+  Serial.println (idToWrite);
   Serial.println (F("Enter a number to change it, or just press enter to use this one."));
 
   int id = readInt();
 
   if (id != 0)
   {
-    currentId = id;
+    idToWrite = id;
     return;
   }
 
@@ -464,12 +464,12 @@ void loop ()
         writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 1, EEPROM_LAYOUT_MAGIC >> 8 & 0xFF);
         writeEEPROM(EEPROM_LAYOUT_MAGIC_START, EEPROM_LAYOUT_MAGIC & 0xFF);
       } else {
-        writeIDsAndKey(currentId);
+        writeIDsAndKey(idToWrite);
       }
     }
     stopProgramming ();
 
-    currentId += 1;
+    idToWrite += 1;
   }   // end of if entered programming mode OK
 }  // end of loop
 
