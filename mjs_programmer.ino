@@ -279,7 +279,9 @@ void writeIDsAndKey(unsigned int id) {
   Serial.println();
 
   Serial.println(F("Now run:"));
-  Serial.print(F("ttnctl devices register "));
+  Serial.print(F("ttnctl devices register meetstation-"));
+  Serial.print(id);
+  Serial.print(F(" "));
   printHexBytes(DevEui, EEPROM_DEV_EUI_LEN);
   Serial.print(F(" "));
   printHexBytes(AppKey, EEPROM_APP_KEY_LEN);
