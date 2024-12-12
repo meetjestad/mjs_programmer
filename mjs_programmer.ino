@@ -59,6 +59,7 @@ const byte SCK = 13;    // SPI clock
 #define EEPROM_DEV_EUI_LEN 8
 #define EEPROM_APP_KEY_START (EEPROM_DEV_EUI_START + EEPROM_DEV_EUI_LEN)
 #define EEPROM_APP_KEY_LEN 16
+#define EEPROM_LENGTH 1024
 
 #include "Signatures.h"
 #include "General_Stuff.h"
@@ -116,7 +117,7 @@ void getFuseBytes ()
 }  // end of getFuseBytes
 
 image_t currentImage;
-uint16_t idToWrite = 1;
+uint16_t idToWrite = 0;
 
 bool writeImage(const image_t* image, uint8_t osccal_value = 0xff) {
 
@@ -233,6 +234,26 @@ bool writeImage(const image_t* image, uint8_t osccal_value = 0xff) {
   return true;
 } // end of writeImage
 
+void dumpEEPROM() {
+  // Dump EEPROM written
+  Serial.println("Values written to EEPROM:");
+  for (byte i = 0; i < EEPROM_APP_KEY_START + EEPROM_APP_KEY_LEN; i++) {
+    printHexByte(readEEPROM(i));
+    if (i % 16 < 15)
+      Serial.write(' ');
+    else
+      Serial.println();
+  }
+  Serial.println();
+}
+
+void clearEEPROM() {
+  for (uint16_t i = 0; i < EEPROM_LENGTH; ++i)
+    writeEEPROM(i, 0xff);
+
+  dumpEEPROM();
+}
+
 void writeIDsAndKey(uint32_t id) {
   uint8_t DevEui[EEPROM_DEV_EUI_LEN], AppKey[EEPROM_APP_KEY_LEN];
 
@@ -266,28 +287,21 @@ void writeIDsAndKey(uint32_t id) {
     writeEEPROM(EEPROM_APP_KEY_START + i, AppKey[i]);
   }
 
-  // Dump EEPROM written
-  Serial.println("Values written to EEPROM:");
-  for (byte i = 0; i < EEPROM_APP_KEY_START + EEPROM_APP_KEY_LEN; i++) {
-    printHexByte(readEEPROM(i));
-    if (i % 16 < 15)
-      Serial.write(' ');
-    else
-      Serial.println();
-  }
-  Serial.println();
+  dumpEEPROM();
   Serial.println();
 
-  Serial.println(F("Now run:"));
-  Serial.print(F("ttnctl devices register meetstation-"));
-  Serial.print(id);
-  Serial.print(F(" "));
-  printHexBytes(DevEui, EEPROM_DEV_EUI_LEN);
-  Serial.print(F(" "));
-  printHexBytes(AppKey, EEPROM_APP_KEY_LEN);
-  Serial.print(F(" --app-eui "));
-  printHexBytes(AppEui, EEPROM_APP_EUI_LEN);
-  Serial.println();
+  if (id != 0) {
+    Serial.println(F("Now run:"));
+    Serial.print(F("ttnctl devices register meetstation-"));
+    Serial.print(id);
+    Serial.print(F(" "));
+    printHexBytes(DevEui, EEPROM_DEV_EUI_LEN);
+    Serial.print(F(" "));
+    printHexBytes(AppKey, EEPROM_APP_KEY_LEN);
+    Serial.print(F(" --app-eui "));
+    printHexBytes(AppEui, EEPROM_APP_EUI_LEN);
+    Serial.println();
+  }
 }
 
 void printHexBytes(const uint8_t *buf, uint8_t len)
@@ -390,9 +404,14 @@ uint16_t readInt() {
 void loop ()
 {
   Serial.println ();
-  Serial.print (F("Next device ID is: "));
-  Serial.println (idToWrite);
-  Serial.println (F("Enter a number to change it, or just press enter to use this one."));
+  if (idToWrite == 0) {
+    Serial.println (F("Not writing id and keys, just calibration and bootloader."));
+    Serial.println (F("Enter a number to write id and keys for the device id entered, or enter to continue without id and keys."));
+  } else {
+    Serial.print (F("Next device ID is: "));
+    Serial.println (idToWrite);
+    Serial.println (F("Enter a number to change it, or just press enter to use this one."));
+  }
 
   uint16_t id = readInt();
 
@@ -427,11 +446,20 @@ void loop ()
       }
 
       if (magic == EEPROM_LAYOUT_MAGIC_OLD) {
-        Serial.println("Detected older EEPROM content, press enter to replace bootloader, but not the id and keys.");
+        if (idToWrite == 0)
+          Serial.println("Detected older EEPROM content, press enter to replace bootloader and CLEAR id and keys.");
+        else
+          Serial.println("Detected older EEPROM content, press enter to replace bootloader, but not the id and keys.");
       } else if (magic == EEPROM_LAYOUT_MAGIC) {
-        Serial.println("Detected up-to-date EEPROM content, press enter to replace everything (include the id and keys).");
+        if (idToWrite == 0)
+          Serial.println("Detected up-to-date EPROM content, press enter to replace bootloader and CLEAR id and keys.");
+        else
+          Serial.println("Detected up-to-date EEPROM content, press enter to replace everything (include the id and keys).");
       } else {
-        Serial.println("No EEPROM content found, press enter to write bootloader and EEPROM.");
+        if (idToWrite == 0)
+          Serial.println("No EEPROM content found, press enter to write bootloader (but not id and keys).");
+        else
+          Serial.println("No EEPROM content found, press enter to write bootloader and EEPROM.");
       }
 
       Serial.println("Enter any non-zero number to abort.");
@@ -469,20 +497,26 @@ void loop ()
       if (!writeImage(&bootloader, osccal))
         return;
 
-      if (magic == EEPROM_LAYOUT_MAGIC_OLD) {
-        // Only update the signature so the sketch knows OSCCAL does not
-        // need to be loaded.
-        writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 3, EEPROM_LAYOUT_MAGIC >> 24 & 0xFF);
-        writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 2, EEPROM_LAYOUT_MAGIC >> 16 & 0xFF);
-        writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 1, EEPROM_LAYOUT_MAGIC >> 8 & 0xFF);
-        writeEEPROM(EEPROM_LAYOUT_MAGIC_START, EEPROM_LAYOUT_MAGIC & 0xFF);
+      if (magic && idToWrite == 0) {
+        clearEEPROM();
       } else {
-        writeIDsAndKey(idToWrite);
+        if (magic == EEPROM_LAYOUT_MAGIC_OLD) {
+          // Only update the signature so the sketch knows OSCCAL does not
+          // need to be loaded.
+          writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 3, EEPROM_LAYOUT_MAGIC >> 24 & 0xFF);
+          writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 2, EEPROM_LAYOUT_MAGIC >> 16 & 0xFF);
+          writeEEPROM(EEPROM_LAYOUT_MAGIC_START + 1, EEPROM_LAYOUT_MAGIC >> 8 & 0xFF);
+          writeEEPROM(EEPROM_LAYOUT_MAGIC_START, EEPROM_LAYOUT_MAGIC & 0xFF);
+        } else {
+          writeIDsAndKey(idToWrite);
+        }
       }
     }
     stopProgramming ();
 
-    idToWrite += 1;
+    if (idToWrite) {
+      idToWrite += 1;
+    }
   }   // end of if entered programming mode OK
 }  // end of loop
 
